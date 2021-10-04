@@ -10,18 +10,18 @@
 package main
 
 import (
-	"context"
+	//"context"
 	//"flag"
 	//"fmt"
 	//"io/ioutil"
-	"log"
-	"os"
-	"os/signal"
+	//"log"
+	//"os"
+	//"os/signal"
 	//"path/filepath"
-	"runtime"
-	"strings"
+	//"runtime"
+	//"strings"
 	"sync"
-	"syscall"
+	//"syscall"
 	//"time"
 
 	"github.com/mjolnir42/nelly-export/internal/push"
@@ -45,7 +45,7 @@ type Consumer struct {
 
 // Setup is run at the beginning of a new session, before ConsumeClaim
 func (consumer *Consumer) Setup(sarama.ConsumerGroupSession) error {
-	consumer.wg = &sync.Waitgroup{}
+	consumer.wg = &sync.WaitGroup{}
 	// mark consumer as ready
 	close(consumer.ready)
 	return nil

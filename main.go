@@ -11,6 +11,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	//"flag"
 	//"fmt"
 	//"io/ioutil"
@@ -18,7 +19,7 @@ import (
 	"os"
 	"os/signal"
 	//"path/filepath"
-	//"runtime"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -50,28 +51,67 @@ var (
 )
 
 func main() {
+	brokers = os.Getenv(`KAFKA_BROKER_PEERS`)
+	topics = strings.Join(
+		[]string{
+			os.Getenv(`KAFKA_PRODUCER_TOPIC_DATA`),
+			os.Getenv(`KAFKA_PRODUCER_TOPIC_SESSION`),
+			os.Getenv(`KAFKA_PRODUCER_TOPIC_ENCRYPTED`),
+		},
+		`,`,
+	)
+	group = os.Getenv(`KAFKA_CONSUMER_GROUP_NAME`)
+
+	var useTLS bool = false
+	switch os.Getenv(`KAFKA_USE_TLS`) {
+	case `true`, `yes`, `1`:
+		useTLS = true
+	default:
+		useTLS = false
+	}
+
 	config := sarama.NewConfig()
 	config.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategySticky
+	if useTLS {
+		config.Net.SASL.User = os.Getenv(`KAFKA_SASL_USER`)
+		config.Net.SASL.Password = os.Getenv(`KAFKA_SASL_PASSWD`)
+		config.Net.SASL.Handshake = true
+		config.Net.SASL.Enable = true
+		config.Net.TLS.Enable = true
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: true,
+			ClientAuth:         0,
+		}
+		config.Net.TLS.Config = tlsConfig
+	}
+	config.ClientID = `nelly-export`
 
 	consumer := Consumer{
 		ready:    make(chan bool),
 		numCPU:   runtime.NumCPU(),
 		handlers: make(map[string]map[int]push.Pusher),
 	}
+	push.Handlers = make(map[string]map[int]push.Pusher)
 
 	// setup goroutine waiting policy
 	waitdelay := delay.New()
+	handlerDeath := make(chan error)
+	shutdown := make(chan struct{})
 
 	// start pusher
-	for t := range strings.Split(topics, `,`) {
+	for _, t := range strings.Split(topics, `,`) {
 		consumer.handlers[t] = make(map[int]push.Pusher)
+		push.Handlers[t] = make(map[int]push.Pusher)
 		for i := 0; i < runtime.NumCPU(); i++ {
 			datachan := make(chan *push.Transport)
 			ph := push.Pusher{
-				Num:   i,
-				Input: datachan,
+				Num:      i,
+				Input:    datachan,
+				Shutdown: shutdown,
+				Death:    handlerDeath,
 			}
 			consumer.handlers[t][i] = ph
+			push.Handlers[t][i] = ph
 			waitdelay.Use()
 			go func() {
 				defer waitdelay.Done()
@@ -117,12 +157,23 @@ func main() {
 
 	sigterm := make(chan os.Signal, 1)
 	signal.Notify(sigterm, syscall.SIGINT, syscall.SIGTERM)
-	select {
-	case <-ctx.Done():
-		log.Println("terminating: context cancelled")
-	case <-sigterm:
-		log.Println("terminating: via signal")
+runloop:
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("terminating: context cancelled")
+			break runloop
+		case <-sigterm:
+			log.Println("terminating: via signal")
+			break runloop
+		case err := <-handlerDeath:
+			if err != nil {
+				log.Println(err)
+			}
+			break runloop
+		}
 	}
+	close(shutdown)
 	cancel()
 	wg.Wait()
 	waitdelay.Wait()
