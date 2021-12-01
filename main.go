@@ -12,9 +12,10 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	//"flag"
 	//"fmt"
-	//"io/ioutil"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
@@ -80,15 +81,28 @@ func main() {
 	config := sarama.NewConfig()
 	config.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategySticky
 	if useTLS {
+		caCertPool := x509.NewCertPool()
+		switch os.Getenv(`SSL_CERT_FILE`) {
+		case ``:
+		default:
+			caCert, err := ioutil.ReadFile(os.Getenv(`SSL_CERT_FILE`))
+			if err != nil {
+				log.Panicf("Error reading SSL_CERT_FILE: " + err.Error())
+			}
+			caCertPool.AppendCertsFromPEM(caCert)
+		}
+
 		config.Net.SASL.User = os.Getenv(`KAFKA_SASL_USER`)
 		config.Net.SASL.Password = os.Getenv(`KAFKA_SASL_PASSWD`)
 		config.Net.SASL.Handshake = true
 		config.Net.SASL.Enable = true
 		config.Net.TLS.Enable = true
 		tlsConfig := &tls.Config{
+			RootCAs:            caCertPool,
 			InsecureSkipVerify: skipVerify,
 			ClientAuth:         0,
 		}
+		tlsConfig.BuildNameToCertificate()
 		config.Net.TLS.Config = tlsConfig
 	}
 	config.ClientID = `nelly-export`
