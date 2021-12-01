@@ -37,6 +37,7 @@ type Pusher struct {
 	topic     string
 	topicSKey string
 	topicENC  string
+	Ready     chan struct{}
 }
 
 type Transport struct {
@@ -121,16 +122,23 @@ func (p *Pusher) Run() {
 		<-p.Shutdown
 		return
 	}
-	_, esCode, err := p.Client.Ping(os.Getenv(`ELASTIC_SEARCH_API_URI`)).Do(context.Background())
-	switch {
-	case err != nil:
-		p.Death <- err
-		<-p.Shutdown
-		return
-	case esCode != 200:
-		p.Death <- fmt.Errorf("Error: elasticsearch cluster responded with code %d\n", esCode)
-		<-p.Shutdown
-		return
+
+	log.Println("Testing configured ES connection...")
+connectloop:
+	for {
+		_, esCode, err := p.Client.Ping(os.Getenv(`ELASTIC_SEARCH_API_URI`)).Do(context.Background())
+		switch {
+		case err != nil:
+			log.Println(err)
+			time.Sleep(5 * time.Second)
+		case esCode != 200:
+			p.Death <- fmt.Errorf("Error: elasticsearch cluster responded with code %d\n", esCode)
+			<-p.Shutdown
+			return
+		default:
+			close(p.Ready)
+			break connectloop
+		}
 	}
 
 runloop:

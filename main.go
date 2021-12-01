@@ -138,6 +138,8 @@ func main() {
 				defer waitdelay.Done()
 				ph.Run()
 			}()
+			log.Printf("Waiting for pusher %s/%d connection to ES\n", t, i)
+			<-ph.Ready
 		}
 	}
 
@@ -173,6 +175,7 @@ func main() {
 		}
 	}()
 
+	log.Println("Waiting for Sarama consumer")
 	<-consumer.ready // Await till the consumer has been set up
 	log.Println("Sarama consumer up and running!...")
 
