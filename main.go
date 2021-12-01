@@ -69,6 +69,13 @@ func main() {
 	default:
 		useTLS = false
 	}
+	var skipVerify bool = true
+	switch os.Getenv(`KAFKA_TLS_SKIPVERIFY`) {
+	case `true`, `yes`, `1`:
+		skipVerify = true
+	default:
+		skipVerify = false
+	}
 
 	config := sarama.NewConfig()
 	config.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategySticky
@@ -79,7 +86,7 @@ func main() {
 		config.Net.SASL.Enable = true
 		config.Net.TLS.Enable = true
 		tlsConfig := &tls.Config{
-			InsecureSkipVerify: true,
+			InsecureSkipVerify: skipVerify,
 			ClientAuth:         0,
 		}
 		config.Net.TLS.Config = tlsConfig
