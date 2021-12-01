@@ -11,8 +11,13 @@ package push
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"net"
+	"net/http"
 	"os"
 	"time"
 
@@ -52,13 +57,66 @@ func (p *Pusher) Run() {
 
 	errorlog := log.New(os.Stdout, "APP ", log.LstdFlags)
 
+	// setup HTTPS client
+	// load TLS CA certificate
+	caCertPool := x509.NewCertPool()
+	switch os.Getenv(`SSL_CERT_FILE`) {
+	case ``:
+	default:
+		caCert, err := ioutil.ReadFile(os.Getenv(`SSL_CERT_FILE`))
+		if err != nil {
+			p.Death <- err
+			<-p.Shutdown
+			return
+		}
+		caCertPool.AppendCertsFromPEM(caCert)
+	}
+
+	var useTLS bool = false
+	switch os.Getenv(`ELASTIC_USE_TLS`) {
+	case `true`, `yes`, `1`:
+		useTLS = true
+	default:
+		useTLS = false
+	}
+
+	var skipVerify bool = false
+	switch os.Getenv(`ELASTIC_TLS_SKIPVERIFY`) {
+	case `true`, `yes`, `1`:
+		skipVerify = true
+	default:
+		skipVerify = false
+	}
+
+	tlsConfig := &tls.Config{
+		RootCAs:            caCertPool,
+		InsecureSkipVerify: skipVerify,
+		ClientAuth:         0,
+	}
+	tlsConfig.BuildNameToCertificate()
+
+	transport := &http.Transport{
+		Dial: (&net.Dialer{
+			Timeout: 5 * time.Second,
+		}).Dial,
+	}
+	if useTLS {
+		transport.TLSClientConfig = tlsConfig
+		transport.TLSHandshakeTimeout = 5 * time.Second
+	}
+
+	httpClient := &http.Client{
+		Transport: transport,
+		Timeout:   time.Second * 10,
+	}
+
 	var err error
-	p.Client, err = elastic.NewClient(
+	if p.Client, err = elastic.NewClient(
+		elastic.SetHttpClient(httpClient),
 		elastic.SetSniff(false),
 		elastic.SetErrorLog(errorlog),
 		elastic.SetURL(os.Getenv(`ELASTIC_SEARCH_API_URI`)),
-	)
-	if err != nil {
+	); err != nil {
 		p.Death <- err
 		<-p.Shutdown
 		return
