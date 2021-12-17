@@ -131,6 +131,7 @@ func main() {
 				Shutdown: shutdown,
 				Death:    handlerDeath,
 			}
+			ph.Ready = make(chan struct{})
 			consumer.handlers[t][i] = ph
 			push.Handlers[t][i] = ph
 			waitdelay.Use()
