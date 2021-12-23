@@ -142,6 +142,7 @@ func main() {
 			}()
 			log.Printf("Waiting for pusher %s/%d connection to ES\n", t, i)
 			<-ph.Ready
+			log.Printf("Pusher %s/%d connection to ES ready\n", t, i)
 		}
 	}
 
