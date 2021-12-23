@@ -58,6 +58,7 @@ func main() {
 			os.Getenv(`KAFKA_PRODUCER_TOPIC_DATA`),
 			os.Getenv(`KAFKA_PRODUCER_TOPIC_SESSION`),
 			os.Getenv(`KAFKA_PRODUCER_TOPIC_ENCRYPTED`),
+			os.Getenv(`KAFKA_PRODUCER_TOPIC_INFLOW`),
 		},
 		`,`,
 	)
