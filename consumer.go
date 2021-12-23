@@ -14,7 +14,7 @@ import (
 	//"flag"
 	//"fmt"
 	//"io/ioutil"
-	//"log"
+	"log"
 	//"os"
 	//"os/signal"
 	//"path/filepath"
