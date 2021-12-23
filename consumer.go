@@ -76,7 +76,12 @@ func (consumer *Consumer) ConsumeClaim(
 				Done:    make(chan interface{}),
 				Message: msg,
 			}
-			consumer.handlers[msg.Topic][int(msg.Offset)%consumer.numCPU].Input <- t
+			select {
+			case consumer.handlers[msg.Topic][int(msg.Offset)%consumer.numCPU].Input <- t:
+			default:
+				log.Printf("Dropped message from %s due to full channel\n", msg.Topic)
+				close(t.Done)
+			}
 			<-t.Done
 			s.MarkMessage(msg, ``)
 
