@@ -37,6 +37,7 @@ type Pusher struct {
 	topic     string
 	topicSKey string
 	topicENC  string
+	topicRAW  string
 	Ready     chan struct{}
 }
 
@@ -55,6 +56,7 @@ func (p *Pusher) Run() {
 	p.topic = os.Getenv(`KAFKA_PRODUCER_TOPIC_DATA`)
 	p.topicSKey = os.Getenv(`KAFKA_PRODUCER_TOPIC_SESSION`)
 	p.topicENC = os.Getenv(`KAFKA_PRODUCER_TOPIC_ENCRYPTED`)
+	p.topicRAW = os.Getenv(`KAFKA_PRODUCER_TOPIC_INFLOW`)
 
 	errorlog := log.New(os.Stdout, "APP ", log.LstdFlags)
 
@@ -164,6 +166,11 @@ func (p *Pusher) process(msg *Transport) {
 		index = `session-key-` + time.Now().UTC().Format(`2006-01-02`)
 	case p.topicENC:
 		index = `encrypted-data-` + time.Now().UTC().Format(`2006-01-02`)
+	case p.topicRAW:
+		index = `inflow-raw-` + time.Now().UTC().Format(`2006-01-02`)
+	default:
+		log.Printf("Dropping msg from unknown topic: %s\n", msg.Message.Topic)
+		return
 	}
 
 	_, err := p.Client.Index().
