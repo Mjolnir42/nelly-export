@@ -124,7 +124,7 @@ func main() {
 		consumer.handlers[t] = make(map[int]push.Pusher)
 		push.Handlers[t] = make(map[int]push.Pusher)
 		for i := 0; i < runtime.NumCPU(); i++ {
-			datachan := make(chan *push.Transport)
+			datachan := make(chan *push.Transport, 64)
 			ph := push.Pusher{
 				Num:      i,
 				Input:    datachan,
