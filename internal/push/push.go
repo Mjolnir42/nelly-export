@@ -134,6 +134,7 @@ connectloop:
 			log.Println(err)
 			time.Sleep(5 * time.Second)
 		case esCode != 200:
+			close(p.Ready)
 			p.Death <- fmt.Errorf("Error: elasticsearch cluster responded with code %d\n", esCode)
 			<-p.Shutdown
 			return
