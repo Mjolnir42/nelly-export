@@ -47,6 +47,19 @@ type Transport struct {
 }
 
 func (p *Pusher) Run() {
+	var (
+		useTLS     bool = false
+		skipVerify bool = false
+		err        error
+		caCert     []byte
+		caCertPool *x509.CertPool
+		errorlog   *log.Logger
+		tlsConfig  *tls.Config
+		transport  *http.Transport
+		httpClient *http.Client
+	)
+
+RestartClient:
 	if len(Handlers) == 0 {
 		p.Death <- fmt.Errorf(`Incorrectly set handlers`)
 		<-p.Shutdown
@@ -58,15 +71,15 @@ func (p *Pusher) Run() {
 	p.topicENC = os.Getenv(`KAFKA_PRODUCER_TOPIC_ENCRYPTED`)
 	p.topicRAW = os.Getenv(`KAFKA_PRODUCER_TOPIC_INFLOW`)
 
-	errorlog := log.New(os.Stdout, "APP ", log.LstdFlags)
+	errorlog = log.New(os.Stdout, "APP ", log.LstdFlags)
 
 	// setup HTTPS client
 	// load TLS CA certificate
-	caCertPool := x509.NewCertPool()
+	caCertPool = x509.NewCertPool()
 	switch os.Getenv(`SSL_CERT_FILE`) {
 	case ``:
 	default:
-		caCert, err := ioutil.ReadFile(os.Getenv(`SSL_CERT_FILE`))
+		caCert, err = ioutil.ReadFile(os.Getenv(`SSL_CERT_FILE`))
 		if err != nil {
 			p.Death <- err
 			<-p.Shutdown
@@ -75,7 +88,6 @@ func (p *Pusher) Run() {
 		caCertPool.AppendCertsFromPEM(caCert)
 	}
 
-	var useTLS bool = false
 	switch os.Getenv(`ELASTIC_USE_TLS`) {
 	case `true`, `yes`, `1`:
 		useTLS = true
@@ -83,7 +95,6 @@ func (p *Pusher) Run() {
 		useTLS = false
 	}
 
-	var skipVerify bool = false
 	switch os.Getenv(`ELASTIC_TLS_SKIPVERIFY`) {
 	case `true`, `yes`, `1`:
 		skipVerify = true
@@ -91,14 +102,14 @@ func (p *Pusher) Run() {
 		skipVerify = false
 	}
 
-	tlsConfig := &tls.Config{
+	tlsConfig = &tls.Config{
 		RootCAs:            caCertPool,
 		InsecureSkipVerify: skipVerify,
 		ClientAuth:         0,
 	}
 	tlsConfig.BuildNameToCertificate()
 
-	transport := &http.Transport{
+	transport = &http.Transport{
 		Dial: (&net.Dialer{
 			Timeout: 5 * time.Second,
 		}).Dial,
@@ -108,12 +119,11 @@ func (p *Pusher) Run() {
 		transport.TLSHandshakeTimeout = 5 * time.Second
 	}
 
-	httpClient := &http.Client{
+	httpClient = &http.Client{
 		Transport: transport,
 		Timeout:   time.Second * 10,
 	}
 
-	var err error
 	if p.Client, err = elastic.NewClient(
 		elastic.SetHttpClient(httpClient),
 		elastic.SetSniff(false),
@@ -153,12 +163,15 @@ runloop:
 			if msg == nil {
 				continue runloop
 			}
-			p.process(msg)
+			err := p.process(msg)
+			if err != nil {
+				goto RestartClient
+			}
 		}
 	}
 }
 
-func (p *Pusher) process(msg *Transport) {
+func (p *Pusher) process(msg *Transport) error {
 	var index string
 	switch msg.Message.Topic {
 	case p.topic:
@@ -171,7 +184,7 @@ func (p *Pusher) process(msg *Transport) {
 		index = `inflow-raw-` + time.Now().UTC().Format(`2006-01-02`)
 	default:
 		log.Printf("Dropping msg from unknown topic: %s\n", msg.Message.Topic)
-		return
+		return nil
 	}
 
 	_, err := p.Client.Index().
@@ -182,6 +195,7 @@ func (p *Pusher) process(msg *Transport) {
 		log.Println(err)
 	}
 	close(msg.Done)
+	return err
 }
 
 // vim: ts=4 sw=4 sts=4 noet fenc=utf-8 ffs=unix
