@@ -151,14 +151,14 @@ connectloop:
 			return
 		default:
 			// do not close channel after RestartClient
-			if !ph.running {
+			if !p.running {
 				close(p.Ready)
 			}
 			break connectloop
 		}
 	}
 	// ES client has successfully connected
-	ph.running = true
+	p.running = true
 
 runloop:
 	for {
