@@ -39,6 +39,7 @@ type Pusher struct {
 	topicENC  string
 	topicRAW  string
 	Ready     chan struct{}
+	running   bool
 }
 
 type Transport struct {
@@ -149,10 +150,15 @@ connectloop:
 			<-p.Shutdown
 			return
 		default:
-			close(p.Ready)
+			// do not close channel after RestartClient
+			if !ph.running {
+				close(p.Ready)
+			}
 			break connectloop
 		}
 	}
+	// ES client has successfully connected
+	ph.running = true
 
 runloop:
 	for {
