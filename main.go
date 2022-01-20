@@ -126,13 +126,14 @@ func main() {
 		push.Handlers[t] = make(map[int]push.Pusher)
 		for i := 0; i < runtime.NumCPU(); i++ {
 			datachan := make(chan *push.Transport, 64)
+			readychan := make(chan struct{})
 			ph := push.Pusher{
 				Num:      i,
 				Input:    datachan,
 				Shutdown: shutdown,
 				Death:    handlerDeath,
+				Ready:    readychan,
 			}
-			ph.Ready = make(chan struct{})
 			consumer.handlers[t][i] = ph
 			push.Handlers[t][i] = ph
 			waitdelay.Use()
